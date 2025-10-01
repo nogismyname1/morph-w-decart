@@ -7,14 +7,26 @@ function App() {
   const videoOutputRef = useRef(null);
   const realtimeClientRef = useRef(null);
   const [prompt, setPrompt] = useState('Anime style');
-  const [status, setStatus] = useState('Disconnected');
+  const [status, setStatus] = useState('Initializing...');
 
   useEffect(() => {
-    const setupDecart = async () => {
+    // This is a self-invoking async function
+    (async () => {
       try {
+        // STEP 1: Fetch the API Key from our new endpoint
+        setStatus('Fetching API Key...');
+        const response = await fetch('/api/get-key');
+        const data = await response.json();
+
+        if (!response.ok || !data.apiKey) {
+          throw new Error(data.error || 'Failed to fetch API Key.');
+        }
+        
+        const decartApiKey = data.apiKey;
+
+        // STEP 2: Request camera access
         setStatus('Requesting camera...');
         const model = models.realtime("lucy_v2v_720p_rt");
-
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: {
@@ -28,11 +40,9 @@ function App() {
           videoInputRef.current.srcObject = stream;
         }
 
+        // STEP 3: Connect to Decart with the fetched key
         setStatus('Connecting to Decart...');
-        const client = createDecartClient({
-          apiKey: import.meta.env.VITE_DECART_API_KEY
-        });
-
+        const client = createDecartClient({ apiKey: decartApiKey });
         const realtimeClient = await client.realtime.connect(stream, {
           model,
           onRemoteStream: (editedStream) => {
@@ -47,12 +57,10 @@ function App() {
         realtimeClient.setPrompt(prompt);
 
       } catch (error) {
-        console.error("Failed to setup Decart:", error);
+        console.error("Failed during setup:", error);
         setStatus(`Error: ${error.message}`);
       }
-    };
-
-    setupDecart();
+    })(); // End of self-invoking async function
 
     return () => {
       if (realtimeClientRef.current) {
@@ -60,7 +68,7 @@ function App() {
         console.log("Decart client disconnected.");
       }
     };
-  }, []);
+  }, []); // The empty array means this effect runs only once
 
   const handlePromptChange = (e) => {
     setPrompt(e.target.value);
